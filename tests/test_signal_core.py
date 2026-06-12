@@ -74,3 +74,17 @@ def test_drivers_tag_sides():
     sides = {d.signal: d.side for d in s.drivers}
     assert sides["whale_retail_flow"] == "capital"
     assert sides["fear_greed"] == "crowd"
+
+
+from divergence.signal_core import calibrate_theta
+
+
+def test_theta_is_quantile_of_abs_divergence():
+    ds = [-1.0, 1.0, -2.0, 2.0, -3.0, 3.0, -4.0, 4.0, -5.0, 5.0]
+    # |D| = 1..5 each twice; 80th percentile ~ 4.x
+    theta = calibrate_theta(ds, quantile=0.8)
+    assert 4.0 <= theta <= 5.0
+
+
+def test_theta_zero_for_empty():
+    assert calibrate_theta([], quantile=0.8) == 0.0

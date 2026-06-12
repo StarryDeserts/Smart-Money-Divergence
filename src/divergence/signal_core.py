@@ -78,3 +78,12 @@ def score_window(window, *, lookback: int = 90) -> Score:
     return Score(token=last.token, day=last.day, divergence=divergence,
                  capital_score=capital_score, crowd_score=crowd_score,
                  drivers=drivers, degraded=degraded)
+
+
+def calibrate_theta(d_values, *, quantile: float = 0.8) -> float:
+    """Absolute |D| threshold at the given quantile of the in-sample divergence distribution.
+    NOT tuned per token; one global number, calibrated in-sample only."""
+    mags = [abs(float(d)) for d in d_values]
+    if not mags:
+        return 0.0
+    return float(np.quantile(mags, quantile))
