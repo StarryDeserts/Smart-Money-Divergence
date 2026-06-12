@@ -1,9 +1,10 @@
 from collections.abc import Sequence
 import numpy as np
 
-from .types import Driver, Score
+from .types import Driver, Score, Signal
 
 _MOM_K = 5
+_DEGRADED_CONF_FACTOR = 0.6
 
 
 def _causal_z(series: Sequence[float | None]) -> float | None:
@@ -87,3 +88,24 @@ def calibrate_theta(d_values, *, quantile: float = 0.8) -> float:
     if not mags:
         return 0.0
     return float(np.quantile(mags, quantile))
+
+
+def decide(score: Score, *, theta_abs: float, allow_short: bool = False) -> Signal:
+    d = score.divergence
+    if theta_abs > 0 and d >= theta_abs:
+        direction = "long"
+    elif theta_abs > 0 and d <= -theta_abs:
+        direction = "short" if allow_short else "flat"
+    else:
+        direction = "flat"
+
+    if direction == "flat":
+        confidence = 0.0
+    else:
+        confidence = min(1.0, abs(d) / (2.0 * theta_abs)) if theta_abs > 0 else 1.0
+        if score.degraded:
+            confidence *= _DEGRADED_CONF_FACTOR
+
+    return Signal(token=score.token, day=score.day, divergence=d, direction=direction,
+                  confidence=confidence, capital_score=score.capital_score,
+                  crowd_score=score.crowd_score, drivers=score.drivers, degraded=score.degraded)

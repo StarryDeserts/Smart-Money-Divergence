@@ -88,3 +88,40 @@ def test_theta_is_quantile_of_abs_divergence():
 
 def test_theta_zero_for_empty():
     assert calibrate_theta([], quantile=0.8) == 0.0
+
+
+from datetime import date
+from divergence.types import Score
+from divergence.signal_core import decide
+
+
+def _score(d, *, degraded=False):
+    return Score(token="BTC", day=date(2025, 1, 1), divergence=d,
+                 capital_score=None if degraded else 1.0,
+                 crowd_score=-d if degraded else 0.0, drivers=[], degraded=degraded)
+
+
+def test_long_when_d_exceeds_theta():
+    sig = decide(_score(3.0), theta_abs=2.0)
+    assert sig.direction == "long" and sig.confidence > 0
+
+
+def test_flat_when_below_theta():
+    sig = decide(_score(1.0), theta_abs=2.0)
+    assert sig.direction == "flat" and sig.confidence == 0.0
+
+
+def test_negative_d_is_flat_when_long_only():
+    sig = decide(_score(-3.0), theta_abs=2.0, allow_short=False)
+    assert sig.direction == "flat"
+
+
+def test_negative_d_is_short_when_allowed():
+    sig = decide(_score(-3.0), theta_abs=2.0, allow_short=True)
+    assert sig.direction == "short"
+
+
+def test_degraded_caps_confidence():
+    full = decide(_score(4.0), theta_abs=2.0).confidence
+    deg = decide(_score(4.0, degraded=True), theta_abs=2.0).confidence
+    assert deg < full
