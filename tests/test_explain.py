@@ -13,7 +13,7 @@ def test_explain_names_token_direction_and_top_driver():
                Driver("fear_greed", 1.6, "crowd", "elevated")]
     text = explain(_sig("short", drivers))
     assert "SOL" in text
-    assert "whales" in text.lower()
+    assert "distributing" in text.lower()  # whale z=-1.8 < 0 => distributing, not accumulating
     assert "reduce" in text.lower() or "short" in text.lower()
 
 

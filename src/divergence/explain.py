@@ -1,7 +1,7 @@
 from .types import Signal
 
 _PHRASES = {
-    "whale_retail_flow": {"capital": ("whales accumulating", "whales distributing")},
+    "whale_retail_flow": {"capital": ("whales distributing", "whales accumulating")},
     "fear_greed": ("crowd fearful", "crowd greedy"),
     "social_heat": ("social quiet", "social hot"),
     "momentum": ("price weak", "price chasing"),
