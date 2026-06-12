@@ -62,7 +62,9 @@ def test_crowd_score_renormalizes_over_available_inputs():
 
 
 def test_flat_when_crowd_side_unavailable():
-    w = make_window(whale_last=10.0, fg=None, social=None, funding=None, oi=None)
+    # n=5 keeps the price series too short for momentum (needs >5 points), so with
+    # fg/social/funding/oi all absent the crowd side genuinely evaporates to None.
+    w = make_window(n=5, whale_last=10.0, fg=None, social=None, funding=None, oi=None)
     s = score_window(w)
     assert s.crowd_score is None
     assert s.divergence == 0.0
