@@ -1,0 +1,8 @@
+{
+  "name": "smart-money-divergence",
+  "description": "Flags divergence between crowd sentiment and real whale-vs-retail capital flow for a token; returns a long/short/flat bias with a plain-language rationale.",
+  "entrypoint": "divergence.skill.runtime:run_skill",
+  "inputs": {"token": "string (symbol, e.g. BTC)"},
+  "outputs": {"verdict": "string", "detail": "object (direction, divergence, confidence, drivers, degraded)"},
+  "version": "0.1.0"
+}
