@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from ..signal_core import score_window, decide, calibrate_theta
 from .simulate import simulate
-from .metrics import sharpe, max_drawdown, hit_rate, turnover, equity_curve
+from .metrics import sharpe, max_drawdown, hit_rate, equity_curve
 
 
 @dataclass
@@ -33,12 +33,12 @@ def _daily_returns(snaps):
     return out
 
 
-def _metrics(positions, rets, cost_bps):
-    strat = simulate(positions, rets, cost_bps=cost_bps)
-    eq = equity_curve(strat)
-    return {"n_days": len(strat), "sharpe": sharpe(strat), "max_drawdown": max_drawdown(eq),
-            "hit_rate": hit_rate(strat), "turnover": turnover(positions),
-            "total_return": (eq[-1] - 1.0) if eq else 0.0}, strat
+def _block(returns, turns) -> dict:
+    """Metrics for one equal-weight portfolio return segment."""
+    eq = equity_curve(returns)
+    return {"n_days": len(returns), "sharpe": sharpe(returns),
+            "max_drawdown": max_drawdown(eq), "hit_rate": hit_rate(returns),
+            "turnover": float(sum(turns)), "total_return": (eq[-1] - 1.0) if eq else 0.0}
 
 
 def run_backtest(history, *, lookback=90, theta_quantile=0.8, allow_short=False,
@@ -47,45 +47,59 @@ def run_backtest(history, *, lookback=90, theta_quantile=0.8, allow_short=False,
     per_token = {}
     for token, snaps in history.items():
         snaps = sorted(snaps, key=lambda s: s.day)
-        scores, rets = [], _daily_returns(snaps)
-        for i in range(len(snaps)):
-            scores.append(score_window(snaps[: i + 1], lookback=lookback))
-        per_token[token] = (snaps, scores, rets)
+        scores = [score_window(snaps[: i + 1], lookback=lookback) for i in range(len(snaps))]
+        per_token[token] = (snaps, scores, _daily_returns(snaps))
 
-    # 2) global in-sample cut (by index fraction of the longest series)
-    total = max(len(v[0]) for v in per_token.values())
+    # 2) global in-sample cut (by index fraction of the longest series) -> boundary DATE
+    longest = max((v[0] for v in per_token.values()), key=len)
+    total = len(longest)
     cut = int(total * split)
+    boundary_day = longest[cut].day if cut < total else None   # first out-of-sample calendar day
 
     # 3) calibrate theta on in-sample |D| only
     in_d = [sc.divergence for (_, scores, _) in per_token.values() for sc in scores[:cut]]
     theta = calibrate_theta(in_d, quantile=theta_quantile)
 
-    # 4) evaluate -> positions, split metrics, attribution
-    is_pos, is_ret, oos_pos, oos_ret, oos_signals = [], [], [], [], []
-    attr_num, attr_den = {}, {}
+    # 4) per-token positions + simulated daily strat/benchmark returns, pooled by CALENDAR DAY
+    #    into an equal-weight daily-rebalanced portfolio (averaging across tokens each day, so
+    #    one token's series never compounds onto another's at a seam).
+    strat_by_day, bench_by_day, turn_by_day = {}, {}, {}
+    oos_signals, attr_num, attr_den = [], {}, {}
     for token, (snaps, scores, rets) in per_token.items():
-        for i, sc in enumerate(scores):
-            sig = decide(sc, theta_abs=theta, allow_short=allow_short)
-            pos = _position(sig)
-            if i < cut:
-                is_pos.append(pos); is_ret.append(rets[i])
-            else:
-                oos_pos.append(pos); oos_ret.append(rets[i]); oos_signals.append((token, sig))
+        pos = [_position(decide(sc, theta_abs=theta, allow_short=allow_short)) for sc in scores]
+        strat = simulate(pos, rets, cost_bps=cost_bps)
+        bench = simulate([1.0] * len(rets), rets, cost_bps=0.0)
+        prev = 0.0
+        for i, s in enumerate(snaps):
+            d = s.day
+            strat_by_day.setdefault(d, []).append(strat[i])
+            bench_by_day.setdefault(d, []).append(bench[i])
+            turn_by_day.setdefault(d, []).append(abs(pos[i] - prev))
+            prev = pos[i]
+            if boundary_day is not None and d >= boundary_day:        # out-of-sample
+                oos_signals.append((token, decide(scores[i], theta_abs=theta, allow_short=allow_short)))
                 fwd = rets[i + 1] if i + 1 < len(rets) else 0.0
-                for d in sc.drivers:
-                    attr_num[d.signal] = attr_num.get(d.signal, 0.0) + np.sign(d.z) * pos * fwd
-                    attr_den[d.signal] = attr_den.get(d.signal, 0) + 1
+                for dr in scores[i].drivers:
+                    attr_num[dr.signal] = attr_num.get(dr.signal, 0.0) + np.sign(dr.z) * pos[i] * fwd
+                    attr_den[dr.signal] = attr_den.get(dr.signal, 0) + 1
 
-    is_metrics, _ = _metrics(is_pos, is_ret, cost_bps)
-    oos_metrics, _ = _metrics(oos_pos, oos_ret, cost_bps)
-    # benchmark: equal-weight, always-long buy&hold over the SAME days, no rebalance cost.
-    # (positions all 1.0; per-token series each begin with a 0.0 return, so concatenation
-    #  never bleeds one token's position into another's first day — same as the strategy path.)
-    is_bench, _ = _metrics([1.0] * len(is_ret), is_ret, cost_bps=0.0)
-    oos_bench, _ = _metrics([1.0] * len(oos_ret), oos_ret, cost_bps=0.0)
+    # 5) collapse to one equal-weight portfolio series, split IS/OOS by the boundary date
+    days = sorted(strat_by_day)
+    port = [float(np.mean(strat_by_day[d])) for d in days]
+    benchp = [float(np.mean(bench_by_day[d])) for d in days]
+    turn = [float(np.mean(turn_by_day[d])) for d in days]
+    is_k = [k for k, d in enumerate(days) if boundary_day is None or d < boundary_day]
+    oos_k = [k for k, d in enumerate(days) if boundary_day is not None and d >= boundary_day]
+
+    def seg(series, idx, *, is_bench=False):
+        s = [series[k] for k in idx]
+        t = [1.0 if j == 0 else 0.0 for j in range(len(idx))] if is_bench else [turn[k] for k in idx]
+        return _block(s, t)
+
     attribution = {k: attr_num[k] / attr_den[k] for k in attr_num if attr_den[k]}
-
-    return BacktestResult(theta_abs=theta, total_days=total, in_sample_days=cut,
-                          oos_days=total - cut, is_metrics=is_metrics, oos_metrics=oos_metrics,
-                          is_benchmark=is_bench, oos_benchmark=oos_bench,
+    return BacktestResult(theta_abs=theta, total_days=total, in_sample_days=len(is_k),
+                          oos_days=len(oos_k),
+                          is_metrics=seg(port, is_k), oos_metrics=seg(port, oos_k),
+                          is_benchmark=seg(benchp, is_k, is_bench=True),
+                          oos_benchmark=seg(benchp, oos_k, is_bench=True),
                           signals=oos_signals, attribution=attribution)

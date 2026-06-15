@@ -42,6 +42,19 @@ def test_benchmark_is_equal_weight_buy_and_hold_same_days():
     assert "total_return" in res.oos_benchmark and "sharpe" in res.oos_benchmark
 
 
+def test_multitoken_portfolio_pools_by_calendar_day_not_concatenation():
+    # 3 tokens over the SAME 100 calendar days. The equal-weight portfolio must carry
+    # ONE return per DISTINCT DATE (100), never tokens*days (300). The earlier harness
+    # concatenated per-token return series end-to-end, compounding one token's drawdown
+    # onto the next and inflating total_return / max_drawdown. Guard against regression.
+    n = 100
+    hist = {t: _series(t, n, whale_fn=lambda i: float((-1) ** i), price_fn=lambda i: 100.0 + i)
+            for t in ("BTC", "ETH", "SOL")}
+    res = run_backtest(hist, lookback=20, split=0.6)
+    assert res.in_sample_days + res.oos_days == n          # distinct dates, not 3 * n
+    assert res.oos_benchmark["n_days"] == res.oos_metrics["n_days"]
+
+
 def test_no_lookahead_future_prices_do_not_change_in_sample():
     # THE central no-look-ahead evidence test (spec §8): tamper the FUTURE, assert the past is untouched.
     base = _series("BTC", 120, whale_fn=lambda i: float((-1) ** i), price_fn=lambda i: 100.0 + i)
