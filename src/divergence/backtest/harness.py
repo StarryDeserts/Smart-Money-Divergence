@@ -43,6 +43,8 @@ def _block(returns, turns) -> dict:
 
 def run_backtest(history, *, lookback=90, theta_quantile=0.8, allow_short=False,
                  cost_bps=15.0, split=0.65) -> BacktestResult:
+    if not history:
+        raise ValueError("run_backtest: history is empty — pass at least one token's snapshots")
     # 1) score every day per token (causal windows)
     per_token = {}
     for token, snaps in history.items():

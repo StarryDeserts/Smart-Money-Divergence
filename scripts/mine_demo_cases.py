@@ -1,6 +1,7 @@
 """E4: surface the cleanest 2-3 demo cases from an OOS backtest run.
 Run: python scripts/mine_demo_cases.py --tokens BTC,ETH,SOL,...
-Prints the highest-conviction non-degraded calls + their plain-language verdict, for the demo script."""
+Prints the highest-|divergence| OOS calls (each flagged [degraded] when the capital side is
+absent, as in the Amber tier) + their plain-language verdict, for the demo script."""
 import argparse
 from divergence.adapters.cmc_client import CMCClient
 from divergence.adapters.historical import HistoricalAdapter

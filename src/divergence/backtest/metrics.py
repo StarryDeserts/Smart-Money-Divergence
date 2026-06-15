@@ -12,6 +12,8 @@ def equity_curve(returns: Sequence[float]) -> list[float]:
 
 def sharpe(returns: Sequence[float], *, periods_per_year: int = 252) -> float:
     a = np.asarray(returns, dtype=float)
+    if a.size == 0:
+        return 0.0
     sd = a.std(ddof=0)
     if sd == 0:
         return 0.0
