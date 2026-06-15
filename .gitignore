@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 data/
 reports/
+!reports/backtest_report.md
 .env
 .env.*
 *.parquet
