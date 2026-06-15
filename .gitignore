@@ -2,8 +2,9 @@ __pycache__/
 *.pyc
 .venv/
 data/
-reports/
+reports/*
 !reports/backtest_report.md
+!reports/agent_registration.json
 .env
 .env.*
 *.parquet
