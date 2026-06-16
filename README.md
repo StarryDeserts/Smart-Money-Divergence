@@ -110,3 +110,36 @@ A CMC Strategy Skill with an Agent-Hub manifest at
 divergence.skill.runtime:run_skill`). Returns the layered output the Hub surfaces:
 a retail-facing **verdict** string plus a structured **detail** block (direction,
 divergence, confidence, ranked drivers, degraded flag).
+
+## Vertical C — ERC-8183 priced provider (Best Use of BNB AI Agent SDK)
+
+Building on the shipped Vertical A (ERC-8004 on-chain identity, agentId 1395) and
+Vertical B (CMC Agent Hub MCP live-data adapter), the Smart-Money Divergence Skill
+is wrapped as a payable ERC-8183 provider:
+
+- **Signed price negotiation** — `make_negotiation_handler` returns a seller-side
+  `NegotiationHandler` that quotes a fixed price (1 U) and signs the quote
+  (EIP-191 `provider_sig`), bound to chain 97 + the commerce contract to block
+  cross-chain replay.
+- **On-chain-exact deliverable** — `build_deliverable_manifest` packages a
+  `run_skill` verdict into the canonical `DeliverableManifest`; its keccak is the
+  exact `bytes32` that `AgenticCommerce.submit` expects, reproducible by any
+  verifier from the manifest JSON.
+- **Identity binding** — `register_agent.py --update-endpoints` advertises the
+  ERC-8183 endpoint on the existing ERC-8004 identity (agentId 1395) via the
+  registry's `setAgentURI`.
+- **Runnable provider** — `scripts/serve_erc8183.py` wires the Skill into the
+  SDK's `create_erc8183_app`; `--check` validates the wiring offline.
+
+Try it (offline, deterministic):
+
+```bash
+python scripts/demo_erc8183.py
+```
+
+**Honest scope.** This proves the *provider* half of ERC-8183 — negotiation, the
+on-chain-exact deliverable hash, and identity. It does **not** settle a job:
+settlement requires the *client* to fund the escrow in the U payment token, whose
+BSC-testnet `mint` is `onlyOwner` (our wallet holds 0 U). The signed quote and the
+manifest hash are real and verifiable; the escrow round-trip (fund → submit →
+settle) is out of scope and deliberately not faked.
