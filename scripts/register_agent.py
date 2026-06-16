@@ -184,6 +184,39 @@ def _update_endpoints(sdk, agent_name, agent_description, existing, web_url, gas
     return 0
 
 
+def _resolve_existing_agent(sdk, agent_name):
+    """Find this wallet's already-registered agent, robustly.
+
+    Primary: the SDK's name-keyed indexer lookup. It scans only the first
+    indexer page, so an agent past page 0 reads as 'not found' (observed:
+    agentId 1395 sits beyond the first 100). Fallback: the agentId tracked in
+    reports/agent_registration.json, accepted ONLY after an on-chain ownerOf
+    check confirms this wallet owns it. Never guesses — a miss returns None so
+    --update-endpoints stops instead of minting a throwaway agent."""
+    found = sdk.get_local_agent_info(agent_name)
+    if found:
+        return found
+    if not EVIDENCE.is_file():
+        return None
+    try:
+        agent_id = int(json.loads(EVIDENCE.read_text())["agent_id"])
+    except Exception:
+        return None
+    try:
+        info = sdk.get_agent_info(agent_id=agent_id)
+    except Exception:
+        return None
+    if str(info.get("owner", "")).lower() != sdk.wallet_address.lower():
+        return None
+    return {
+        "agent_id": agent_id,
+        "name": agent_name,
+        "agent_uri": info.get("agentURI", ""),
+        "owner_address": info.get("owner"),
+        "_source": "reports/agent_registration.json + on-chain ownerOf",
+    }
+
+
 def main() -> int:
     dry_run = "--dry-run" in sys.argv[1:]
     self_pay = "--self-pay" in sys.argv[1:]
@@ -237,8 +270,10 @@ def main() -> int:
     print(f"  web        : {web_url}")
 
     # Idempotency: if this wallet already registered this name, report and stop.
-    existing = sdk.get_local_agent_info(agent_name)
+    existing = _resolve_existing_agent(sdk, agent_name)
     if existing:
+        if existing.get("_source"):
+            print(f"  resolved   : agentId={existing['agent_id']} via {existing['_source']}")
         if update_endpoints:
             return _update_endpoints(
                 sdk, agent_name, agent_description, existing, web_url, gas_mode, dry_run
@@ -251,6 +286,16 @@ def main() -> int:
         )
         print(f"  evidence written: {EVIDENCE.relative_to(ROOT)}")
         return 0
+
+    if update_endpoints:
+        print(
+            f"\n--update-endpoints: could not resolve an agent named {agent_name!r} "
+            f"owned by {sdk.wallet_address} (indexer page-0 miss and no verifiable "
+            f"{EVIDENCE.relative_to(ROOT)} record). Refusing to fall through to a fresh "
+            "registration (that would mint a throwaway agentId). Nothing sent.",
+            file=sys.stderr,
+        )
+        return 2
 
     endpoints = _build_endpoints(web_url)
     agent_uri = sdk.generate_agent_uri(
