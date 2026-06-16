@@ -59,7 +59,7 @@ def build_demo_payload(token: str = "BTC", *, job_id: int = 0) -> dict:
     wallet = _demo_wallet()
     handler = ep.make_negotiation_handler(
         wallet,
-        currency="0xc70B8741B8B07A6d61E54fd4B20f22Fa648E5565",   # U token (testnet)
+        currency=ep.TESTNET_PAYMENT_TOKEN,
         chain_id=ep.testnet_chain_id(),
         verifying_contract=ep.testnet_contracts()["commerce"],
     )

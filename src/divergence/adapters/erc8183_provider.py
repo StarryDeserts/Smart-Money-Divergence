@@ -25,6 +25,7 @@ AGENT_ID = 1395                       # our ERC-8004 identity (reports/agent_reg
 DEFAULT_NETWORK = "bsc-testnet"
 DEFAULT_RPC = "https://bsc-testnet-rpc.publicnode.com"
 DEFAULT_SERVICE_PRICE = "1000000000000000000"   # 1 U (18 decimals)
+TESTNET_PAYMENT_TOKEN = "0xc70B8741B8B07A6d61E54fd4B20f22Fa648E5565"  # U token; not in the preset (read on-chain), so the live smoke test pins it to payment_token
 
 
 def testnet_chain_id(network: str = DEFAULT_NETWORK) -> int:

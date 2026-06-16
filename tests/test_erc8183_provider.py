@@ -24,7 +24,7 @@ _CONTRACTS = {
     "router": "0xd7d36d66d2f1b608a0f943f722d27e3744f66f25",
     "policy": "0x4f4678d4439fec812ac7674bb3efb4c8f5fb78a6",
 }
-_CURRENCY = "0xc70B8741B8B07A6d61E54fd4B20f22Fa648E5565"  # U token (testnet)
+_CURRENCY = ep.TESTNET_PAYMENT_TOKEN  # U token (testnet); pinned to the live payment_token in the smoke test
 
 
 def _dummy_wallet():
@@ -143,6 +143,10 @@ def test_live_kernel_binding_smoke():
     provider = ep.DivergenceProvider.from_env()
     binding = provider.kernel_binding()
     assert binding["chain_id"] == _CHAIN_ID
+    # Pin the hardcoded currency literal to the real on-chain payment token: if the
+    # deployment ever changes it, the signed quotes advertise a currency the live
+    # client would reject, and this is the only gate that catches the drift.
+    assert binding["payment_token"].lower() == _CURRENCY.lower()
     assert binding["dispute_window_s"] > 0
     assert binding["job_counter"] >= 0
     # the live quote + a signed negotiation also work end-to-end
