@@ -89,3 +89,47 @@ def test_testnet_preset_matches_known_deployment():
     c = ep.testnet_contracts()
     assert set(c) == {"commerce", "router", "policy"}
     assert c["commerce"].lower() == _CONTRACTS["commerce"]
+
+
+def test_negotiate_accepts_well_formed_request_and_signs():
+    handler = ep.make_negotiation_handler(
+        _dummy_wallet(), currency=_CURRENCY, chain_id=_CHAIN_ID,
+        verifying_contract=_CONTRACTS["commerce"],
+    )
+    result = handler.negotiate(ep.sample_request("BTC"))
+    assert result.accepted is True
+    assert result.provider_sig.startswith("0x") and len(result.provider_sig) > 2
+    assert result.response["terms"]["price"] == ep.DEFAULT_SERVICE_PRICE
+    assert result.response["terms"]["currency"] == _CURRENCY
+
+
+def test_negotiate_rejects_empty_quality_standards():
+    from bnbagent.erc8183.negotiation import ReasonCode
+    handler = ep.make_negotiation_handler(
+        _dummy_wallet(), currency=_CURRENCY, chain_id=_CHAIN_ID,
+        verifying_contract=_CONTRACTS["commerce"],
+    )
+    bad = ep.sample_request("BTC")
+    bad["terms"]["quality_standards"] = ""   # present but empty -> AMBIGUOUS_TERMS
+    result = handler.negotiate(bad)
+    assert result.accepted is False
+    assert result.response["reason_code"] == ReasonCode.AMBIGUOUS_TERMS
+
+
+def test_job_anchor_round_trips_and_preserves_provider_sig():
+    """The signed quote serializes into the exact on-chain createJob `description`
+    (a compact Schema-v1 JSON) and parses back with price/currency/provider_sig
+    intact — the payload a client anchors at createJob, verifiable by anyone."""
+    from bnbagent.erc8183.negotiation import parse_job_description
+    handler = ep.make_negotiation_handler(
+        _dummy_wallet(), currency=_CURRENCY, chain_id=_CHAIN_ID,
+        verifying_contract=_CONTRACTS["commerce"],
+    )
+    result = handler.negotiate(ep.sample_request("BTC"))
+    anchor = ep.build_job_anchor(result)
+    assert isinstance(anchor, str) and anchor.startswith("{")
+    jd = parse_job_description(anchor)
+    assert jd is not None
+    assert jd.price == ep.DEFAULT_SERVICE_PRICE
+    assert jd.currency == _CURRENCY
+    assert jd.provider_sig == result.provider_sig

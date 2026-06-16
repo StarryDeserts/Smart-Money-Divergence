@@ -97,3 +97,42 @@ def build_deliverable_manifest(
         },
         metadata={"agent_id": agent_id, "schema": "smart-money-divergence/v1"},
     )
+
+
+def make_negotiation_handler(
+    wallet,
+    *,
+    currency: str,
+    chain_id: int,
+    verifying_contract: str,
+    service_price: str = DEFAULT_SERVICE_PRICE,
+):
+    """Seller-side negotiation handler bound to a chain + commerce contract.
+
+    Passing ``wallet`` makes the handler sign the quote (provider_sig) via local
+    EIP-191 — no RPC. Binding ``chain_id`` + ``verifying_contract`` prevents
+    cross-chain replay of that signature. Offline-constructable with a throwaway
+    key. The stock handler accepts any well-formed request at ``service_price``
+    and rejects only empty/ambiguous terms (``AMBIGUOUS_TERMS``) or an over-cap
+    description (``TASK_TOO_LONG``).
+    """
+    from bnbagent.erc8183.negotiation import NegotiationHandler
+    return NegotiationHandler(
+        service_price=service_price,
+        currency=currency,
+        wallet_provider=wallet,
+        chain_id=chain_id,
+        verifying_contract=verifying_contract,
+    )
+
+
+def build_job_anchor(result) -> str:
+    """Serialize an *accepted* negotiation result into the on-chain createJob
+    ``description`` (a compact Schema-v1 JSON string).
+
+    Embeds ``negotiation_hash`` + ``provider_sig`` so anyone can ``ecrecover``
+    that the provider agreed to these exact terms. Pure — no chain write. Inverse:
+    ``parse_job_description`` / ``JobDescription.from_str``. Raises on a rejected
+    result (no agreed price)."""
+    from bnbagent.erc8183.negotiation import build_job_description
+    return build_job_description(result.to_dict())
