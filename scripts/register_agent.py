@@ -17,6 +17,11 @@ Run:
                                                 #   fallback when the testnet paymaster relay
                                                 #   accepts a sponsored tx but never lands it
     python scripts/register_agent.py --dry-run  # build + preview, no on-chain tx
+    python scripts/register_agent.py --update-endpoints
+                                                # update an already-registered agent's on-chain
+                                                #   agentURI to advertise the ERC-8183 endpoint
+                                                #   (requires AGENT_ERC8183_URL); combine with
+                                                #   --dry-run to preview without sending a tx.
 
 Re-running is safe: if this wallet already registered the agent name, the script
 reports the existing agentId instead of registering a duplicate.
@@ -105,7 +110,7 @@ def _build_endpoints(web_url: str):
 
 
 def _write_evidence(sdk, agent_name, *, agent_id, tx_hash, agent_uri, web_url, status,
-                    gas_mode="self-paid") -> None:
+                    gas_mode="self-paid", path: Path = EVIDENCE) -> None:
     chain_id = sdk.network.get("chain_id")
     wallet = sdk.wallet_address
     evidence = {
@@ -126,8 +131,8 @@ def _write_evidence(sdk, agent_name, *, agent_id, tx_hash, agent_uri, web_url, s
         "recorded_at": datetime.now(timezone.utc).isoformat(),
         "status": status,
     }
-    EVIDENCE.parent.mkdir(parents=True, exist_ok=True)
-    EVIDENCE.write_text(json.dumps(evidence, indent=2) + "\n")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(evidence, indent=2) + "\n")
 
 
 def _resolve_network(self_pay: bool):
@@ -148,10 +153,51 @@ def _resolve_network(self_pay: bool):
     return replace(base, rpc_url=rpc, use_paymaster=False), rpc, False
 
 
+UPDATE_EVIDENCE = ROOT / "reports" / "agent_identity_update.json"
+
+
+def _update_endpoints(sdk, agent_name, agent_description, existing, web_url, gas_mode,
+                      dry_run) -> int:
+    """Update an already-registered agent's on-chain agentURI so it advertises the
+    ERC-8183 endpoint. Uses the registry's setAgentURI (a real on-chain update);
+    a plain re-register is idempotent and would skip."""
+    agent_id = existing["agent_id"]
+    endpoints = _build_endpoints(web_url)
+    agent_uri = sdk.generate_agent_uri(
+        name=agent_name, description=agent_description, endpoints=endpoints,
+        agent_id=agent_id,
+    )
+    print(f"\n  updating agentId={agent_id} endpoints: {[e.name for e in endpoints]}")
+    if dry_run:
+        print("  --dry-run: built updated agentURI, skipped on-chain setAgentURI. Nothing sent.")
+        return 0
+    result = sdk.set_agent_uri(agent_id=agent_id, agent_uri=agent_uri)
+    tx_hash = result.get("transactionHash")
+    print(f"  OK  setAgentURI tx = {tx_hash}")
+    _write_evidence(
+        sdk, agent_name, agent_id=agent_id, tx_hash=tx_hash,
+        agent_uri=result.get("agentURI", agent_uri), web_url=web_url,
+        status="endpoints-updated", gas_mode=gas_mode, path=UPDATE_EVIDENCE,
+    )
+    print(f"  evidence written: {UPDATE_EVIDENCE.relative_to(ROOT)}")
+    print(f"  verify tx: https://testnet.bscscan.com/tx/{tx_hash}")
+    return 0
+
+
 def main() -> int:
     dry_run = "--dry-run" in sys.argv[1:]
     self_pay = "--self-pay" in sys.argv[1:]
+    update_endpoints = "--update-endpoints" in sys.argv[1:]
     _load_env_local()
+
+    if update_endpoints and not os.environ.get("AGENT_ERC8183_URL"):
+        print(
+            "--update-endpoints requires AGENT_ERC8183_URL (the live ERC-8183 "
+            "provider endpoint to advertise).\n"
+            f"Set it in {ENV_LOCAL} (gitignored), then re-run.",
+            file=sys.stderr,
+        )
+        return 2
 
     agent_name = os.environ.get("AGENT_NAME", "smart-money-divergence")
     agent_description = os.environ.get("AGENT_DESCRIPTION", DEFAULT_DESCRIPTION)
@@ -193,6 +239,10 @@ def main() -> int:
     # Idempotency: if this wallet already registered this name, report and stop.
     existing = sdk.get_local_agent_info(agent_name)
     if existing:
+        if update_endpoints:
+            return _update_endpoints(
+                sdk, agent_name, agent_description, existing, web_url, gas_mode, dry_run
+            )
         print(f"\n  already registered: agentId={existing['agent_id']} — skipping.")
         _write_evidence(
             sdk, agent_name, agent_id=existing["agent_id"], tx_hash=None,
