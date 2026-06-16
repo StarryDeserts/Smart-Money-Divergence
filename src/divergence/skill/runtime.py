@@ -2,12 +2,16 @@ from __future__ import annotations
 from ..signal_core import score_window, decide
 from ..explain import explain
 
+# Committed E2 in-sample calibration (docs/superpowers/notes/2026-06-12-e2-gate.md).
+# The single source of truth for the decision threshold — demo.py and cli.py import it.
+DEFAULT_THETA = 1.444
+
 
 def _driver_dict(d) -> dict:
     return {"signal": d.signal, "z": round(d.z, 3), "side": d.side, "label": d.label}
 
 
-def run_skill(token, provider, *, theta_abs: float, lookback: int = 90,
+def run_skill(token, provider, *, theta_abs: float = DEFAULT_THETA, lookback: int = 90,
               allow_short: bool = False) -> dict:
     """Live Skill entrypoint. Reuses the exact backtested signal path.
     Returns C6 layered output: Layer-1 verdict string + Layer-2 structured detail."""

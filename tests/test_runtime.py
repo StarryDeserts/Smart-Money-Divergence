@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 from divergence.types import Snapshot
-from divergence.skill.runtime import run_skill
+from divergence.skill.runtime import run_skill, DEFAULT_THETA
 
 
 class _Provider:
@@ -38,3 +38,13 @@ def test_run_skill_flags_degraded_when_hero_absent():
 def test_run_skill_long_when_whales_buy_into_fear():
     out = run_skill("BTC", _Provider(_window(whale_last=10.0, fg_last=5.0)), theta_abs=0.5)
     assert out["detail"]["direction"] == "long"
+
+
+def test_default_theta_is_the_committed_calibration():
+    assert DEFAULT_THETA == 1.444
+
+
+def test_run_skill_uses_default_theta_when_omitted():
+    # Omitting theta_abs must be identical to passing the committed default.
+    w = _window()
+    assert run_skill("BTC", _Provider(w)) == run_skill("BTC", _Provider(w), theta_abs=DEFAULT_THETA)

@@ -1,20 +1,21 @@
 """90-second demo: run the live Skill path on a token and print the layered verdict.
 Run: CMC_PRO_API_KEY=... python scripts/demo.py BTC
-Falls back to the cached HistoricalAdapter window if no live key is set."""
+Falls back to a SyntheticProvider (a degraded demo signal) when no cached frame
+exists, so a fresh clone runs with zero setup and never crashes."""
+import os
 import sys
-from datetime import date
-from divergence.adapters.cmc_client import CMCClient
-from divergence.adapters.historical import HistoricalAdapter
-from divergence.skill.runtime import run_skill
+from divergence.adapters.synthetic import resolve_provider
+from divergence.skill.runtime import run_skill, DEFAULT_THETA
 
 
 def main():
     token = sys.argv[1] if len(sys.argv) > 1 else "BTC"
-    # Demo uses the cached historical window as the provider (offline-safe);
-    # the live Skill swaps in LiveAdapter with the same interface.
-    provider = HistoricalAdapter(CMCClient())
-    # theta_abs is the committed E2 calibration (docs/.../2026-06-12-e2-gate.md): theta_abs=1.444.
-    theta_abs = float(__import__("os").environ.get("DIVERGENCE_THETA", "1.444"))
+    # Prefer the cached historical window (offline-safe); fall back to synthetic
+    # data on a fresh clone. The live Skill swaps in LiveAdapter, same interface.
+    provider, note = resolve_provider(token)
+    if note:
+        print(note, file=sys.stderr)
+    theta_abs = float(os.environ.get("DIVERGENCE_THETA", DEFAULT_THETA))
     out = run_skill(token, provider, theta_abs=theta_abs)
     print(f"\n  VERDICT: {out['verdict']}\n")
     d = out["detail"]

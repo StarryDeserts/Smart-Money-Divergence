@@ -97,6 +97,38 @@ runs the signal + backtest tests; the BNB AI Agent SDK (`bnbagent`) adds the
 ERC-8004 identity and ERC-8183 provider tests. The one skipped test is a live
 BSC-testnet smoke test, gated behind `RUN_LIVE_ERC8183=1`.
 
+## Integrate in your tool
+
+The integration contract is **one method**. Any object with
+`trailing_window(token, end, lookback) -> list[Snapshot]` is a valid provider —
+plug in your own daily-series data source and call `run_skill`:
+
+```python
+from divergence.types import Snapshot
+from divergence.skill.runtime import run_skill   # theta_abs defaults to the committed θ
+
+class MyProvider:
+    def trailing_window(self, token, end, lookback):
+        # Map YOUR daily rows (oldest first) onto Snapshots. Any field may be None;
+        # whale_retail_flow is the hero capital axis — omit it and the Skill degrades.
+        return [
+            Snapshot(token=token, day=r["day"], price=r["price"],
+                     whale_retail_flow=r.get("whale_flow"), fear_greed=r.get("fear_greed"))
+            for r in my_daily_rows(token)[-lookback:]
+        ]
+
+out = run_skill("BTC", MyProvider())
+print(out["verdict"], out["detail"]["direction"])   # plain-language + structured
+```
+
+**No Python?** `python scripts/cli.py BTC` prints the same `{verdict, detail}` as
+**pure JSON on stdout** (human notes go to stderr), so JS/Go/Rust callers can shell
+out and parse it: `python scripts/cli.py BTC | jq .detail.direction`.
+
+**Zero-config first run.** With no cached `data/` frame and no key, `demo.py` /
+`cli.py` fall back to a `SyntheticProvider` and print a clearly-labelled *degraded*
+signal — a fresh clone runs with no setup and never crashes.
+
 ## Special-prize verticals
 
 All three reuse the *same* `run_skill` output — no separate model, no
