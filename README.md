@@ -6,6 +6,13 @@ A backtestable CoinMarketCap Strategy Skill for **BNB Hack — AI Trading Agent
 Edition, Track 2**. It flags when **crowd sentiment and real capital flow disagree**
 and turns that gap into a long / short / flat bias with a plain-language rationale.
 
+> **This branch (`spike/agent-hub-bnb`) is additive** and targets two special prizes
+> on top of the Track-2 Skill — **Best Use of CMC Agent Hub** (a live MCP data
+> adapter) and **Best Use of BNB AI Agent SDK** (on-chain ERC-8004 identity + an
+> ERC-8183 priced provider). All three reuse the *same pure signal core* — see
+> [§ Special-prize verticals](#special-prize-verticals). Baseline `main`
+> (`v0.1.0-submission`) is the untouched pure Track-2 entry.
+
 ## The thesis
 
 Short-term price is driven by the **crowd** (social heat, Fear & Greed, momentum).
@@ -42,7 +49,10 @@ spine, not a footnote.
 ## Architecture
 
 One **pure** `signal_core` is called byte-for-byte by both the offline backtest and
-the live Skill — so what we backtest is exactly what runs live.
+the live Skill — so what we backtest is exactly what runs live. The three
+special-prize verticals all hang off the *same* core: the live `LiveAdapter` is fed
+by **CMC Agent Hub (MCP)**, the layered Skill output is what the **ERC-8183 provider**
+sells, and the whole Skill is published under one **ERC-8004 on-chain identity**.
 
 ```
    CMC Pro  ───▶ │ HistoricalAdapter │ ┐
@@ -76,10 +86,97 @@ the live Skill — so what we backtest is exactly what runs live.
 ## Quickstart
 
 ```bash
-pip install -e ".[dev]" && pytest -q          # 63 tests, all green
-python scripts/demo.py BTC                     # live Skill path on one token
+# Full suite, incl. the on-chain verticals (adds the BNB AI Agent SDK):
+pip install -e ".[dev]" bnbagent && pytest -q   # 98 passed, 1 skipped
+python scripts/demo.py BTC                       # live Skill path on one token
 python scripts/run_backtest.py --tokens BTC,ETH,SOL,BNB,DOGE   # the gate scorecard
 ```
+
+The **pure Track-2 core needs no SDK at all** — `pip install -e ".[dev]" && pytest`
+runs the signal + backtest tests; the BNB AI Agent SDK (`bnbagent`) adds the
+ERC-8004 identity and ERC-8183 provider tests. The one skipped test is a live
+BSC-testnet smoke test, gated behind `RUN_LIVE_ERC8183=1`.
+
+## Special-prize verticals
+
+All three reuse the *same* `run_skill` output — no separate model, no
+re-implementation. Each states its own honest boundary.
+
+### A · CMC Agent Hub — live MCP data adapter  *(Best Use of CMC Agent Hub)*
+
+`src/divergence/adapters/cmc_mcp.py` talks to the **CoinMarketCap Agent Hub MCP
+server** (`https://mcp.coinmarketcap.com/mcp`, streamable HTTP, header-key auth —
+**zero-money**, no x402/Base rail). It maps four Hub tools (`get_crypto_quotes_latest`,
+`get_crypto_metrics`, `get_global_metrics_latest`, `get_global_crypto_derivatives_metrics`)
+onto the Skill's `Snapshot` schema, surfacing the **per-token capital axis** that the
+free REST tier paywalls. The Strategy Skill ships an Agent-Hub manifest
+([`skill/manifest.json`](skill/manifest.json), entrypoint
+`divergence.skill.runtime:run_skill`) returning a retail-facing **verdict** plus a
+structured **detail** block (direction, divergence, confidence, ranked drivers,
+degraded flag).
+
+```bash
+python scripts/demo_mcp.py BTC          # live; reads CMC_PRO_API_KEY from .env.local
+```
+
+**Honest scope.** The MCP tier is *latest-only* (no history), so it feeds the live
+signal as a Green **ingredient**, not a full Green **verdict** — the backtest still
+runs on CMC Pro history. The adapter is real and fail-soft; it never fabricates a
+capital score it cannot source.
+
+### B · ERC-8004 on-chain identity  *(BNB AI Agent SDK)*
+
+The Skill is registered as an **ERC-721 agent on BSC testnet (chain 97)** via the
+BNB AI Agent SDK (`bnbagent`):
+
+| | |
+|---|---|
+| Agent | **agentId 1395** — `smart-money-divergence` |
+| Owner wallet | [`0x4727165918986b69ff3F94aC1dAa94987B819cfD`](https://testnet.bscscan.com/address/0x4727165918986b69ff3F94aC1dAa94987B819cfD) |
+| Registry | `0x8004A818BFB912233c491871b3d84c89A494BD9e` |
+| Register tx | [`0x5367a3ae…74fbf8be`](https://testnet.bscscan.com/tx/0x5367a3ae19083fb19fafea8180f08f9e2b589869cbdd859e715cae8c74fbf8be) |
+| `setAgentURI` tx | [`0xe4c8b9c1…cb682738`](https://testnet.bscscan.com/tx/0xe4c8b9c1b9fcdcae5aba9057f21749363b618c4f71d2c70f7f2100c2cb682738) |
+
+The on-chain `agentURI` advertises three services — **web, MCP, ERC-8183** — so the
+identity points at both the Agent-Hub manifest and the priced provider below.
+Registration is gasless-capable (MegaFuel paymaster) but was settled self-paid for a
+reliable receipt. Evidence: [`reports/agent_registration.json`](reports/agent_registration.json).
+
+```bash
+python scripts/register_agent.py --update-endpoints --dry-run   # safe: prints the planned setAgentURI, sends nothing
+```
+
+### C · ERC-8183 priced provider  *(Best Use of BNB AI Agent SDK)*
+
+`src/divergence/adapters/erc8183_provider.py` wraps the Skill as a **payable
+ERC-8183 provider**:
+
+- **Signed price negotiation** — quotes a fixed price (1 U) and signs the quote
+  (EIP-191 `provider_sig`), bound to chain 97 + the commerce contract to block
+  cross-chain replay.
+- **On-chain-exact deliverable** — packs a `run_skill` verdict into the canonical
+  `DeliverableManifest`; its keccak is the exact `bytes32` that
+  `AgenticCommerce.submit` expects, reproducible by any verifier from the manifest
+  JSON. Deterministic hash:
+  `0x8cb8f20cad17162aaa89bff41bc3d8b7adc2765e0ef09b39b6152400f65d67eb`.
+- **Identity binding** — the same agentId 1395 advertises this provider's endpoint
+  (the `setAgentURI` tx above).
+
+Contracts (BSC-testnet preset): commerce `0xa206c0517b6371c6638cd9e4a42cc9f02a33b0de`,
+router `0xd7d36d66d2f1b608a0f943f722d27e3744f66f25`,
+policy `0x4f4678d4439fec812ac7674bb3efb4c8f5fb78a6`.
+
+```bash
+python scripts/demo_erc8183.py          # offline, deterministic — the video path
+python scripts/serve_erc8183.py --check # validates the SDK wiring offline
+```
+
+**Honest scope.** This proves the **provider** half of ERC-8183 — negotiation, the
+on-chain-exact deliverable hash, and identity. It does **not** settle a job:
+settlement requires the *client* to fund escrow in the U payment token, whose
+BSC-testnet `mint` is `onlyOwner` (our wallet holds 0 U). The signed quote and the
+manifest hash are real and verifiable; the escrow round-trip (fund → submit →
+settle) is out of scope and deliberately not faked.
 
 ## Anti-overfit
 
@@ -92,54 +189,15 @@ once) both stay in a tight band and beat buy-&-hold in every cell — see the
 
 ## Scope & honesty
 
-- **No live trading, no wallets, no funds.** This is Track 2 by design — a
-  *backtestable signal Skill*, judged as quant research, not an execution agent.
+- **No live trading and no real funds.** The Track-2 Skill is a *backtestable signal*,
+  judged as quant research, not an execution agent. The special-prize verticals use a
+  **testnet-only** wallet for identity + signing — zero real money, no x402/Base rail.
 - **Tiered graceful degradation** (Green / Amber / Red). The Skill states its own
   data confidence: when the capital side is absent it says so (`degraded: true`)
-  and falls back to crowd-contrarian instead of pretending. This run is **Amber**.
+  and falls back to crowd-contrarian instead of pretending. The headline backtest is
+  **Amber**.
 - **The missing alpha is the differentiator.** The on-chain whale-vs-retail axis is
   what lifts this out of the crowded sentiment cluster. A CMC key upgrade unlocks it
   and re-runs the *same* report at the Green tier with **zero code change** (the
   fail-soft adapters are already wired) — the headline pitch is to demo that hero
   signal live.
-
-## Track 2 + Agent Hub
-
-A CMC Strategy Skill with an Agent-Hub manifest at
-[`skill/manifest.json`](skill/manifest.json) (`entrypoint:
-divergence.skill.runtime:run_skill`). Returns the layered output the Hub surfaces:
-a retail-facing **verdict** string plus a structured **detail** block (direction,
-divergence, confidence, ranked drivers, degraded flag).
-
-## Vertical C — ERC-8183 priced provider (Best Use of BNB AI Agent SDK)
-
-Building on the shipped Vertical A (ERC-8004 on-chain identity, agentId 1395) and
-Vertical B (CMC Agent Hub MCP live-data adapter), the Smart-Money Divergence Skill
-is wrapped as a payable ERC-8183 provider:
-
-- **Signed price negotiation** — `make_negotiation_handler` returns a seller-side
-  `NegotiationHandler` that quotes a fixed price (1 U) and signs the quote
-  (EIP-191 `provider_sig`), bound to chain 97 + the commerce contract to block
-  cross-chain replay.
-- **On-chain-exact deliverable** — `build_deliverable_manifest` packages a
-  `run_skill` verdict into the canonical `DeliverableManifest`; its keccak is the
-  exact `bytes32` that `AgenticCommerce.submit` expects, reproducible by any
-  verifier from the manifest JSON.
-- **Identity binding** — `register_agent.py --update-endpoints` advertises the
-  ERC-8183 endpoint on the existing ERC-8004 identity (agentId 1395) via the
-  registry's `setAgentURI`.
-- **Runnable provider** — `scripts/serve_erc8183.py` wires the Skill into the
-  SDK's `create_erc8183_app`; `--check` validates the wiring offline.
-
-Try it (offline, deterministic):
-
-```bash
-python scripts/demo_erc8183.py
-```
-
-**Honest scope.** This proves the *provider* half of ERC-8183 — negotiation, the
-on-chain-exact deliverable hash, and identity. It does **not** settle a job:
-settlement requires the *client* to fund the escrow in the U payment token, whose
-BSC-testnet `mint` is `onlyOwner` (our wallet holds 0 U). The signed quote and the
-manifest hash are real and verifiable; the escrow round-trip (fund → submit →
-settle) is out of scope and deliberately not faked.
