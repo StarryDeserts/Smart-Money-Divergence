@@ -1,0 +1,18 @@
+{
+  "agent_name": "smart-money-divergence",
+  "agent_id": 1395,
+  "transaction_hash": "0x5367a3ae19083fb19fafea8180f08f9e2b589869cbdd859e715cae8c74fbf8be",
+  "wallet_address": "0x4727165918986b69ff3F94aC1dAa94987B819cfD",
+  "network": "bsc-testnet",
+  "chain_id": 97,
+  "gas_mode": "self-paid (funded wallet)",
+  "registry_contract": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+  "web_endpoint": "https://github.com/StarryDeserts/Smart-Money-Divergence",
+  "agent_uri": "data:application/json;base64,eyJkZXNjcmlwdGlvbiI6IkZsYWdzIGRpdmVyZ2VuY2UgYmV0d2VlbiBjcm93ZCBzZW50aW1lbnQgYW5kIHJlYWwgd2hhbGUtdnMtcmV0YWlsIGNhcGl0YWwgZmxvdyBmb3IgYSB0b2tlbjsgcmV0dXJucyBhIGxvbmcvc2hvcnQvZmxhdCBiaWFzIHdpdGggYSBwbGFpbi1sYW5ndWFnZSByYXRpb25hbGUuIiwiaW1hZ2UiOiIiLCJuYW1lIjoic21hcnQtbW9uZXktZGl2ZXJnZW5jZSIsInJlZ2lzdHJhdGlvbnMiOlt7ImFnZW50SWQiOjEzOTUsImFnZW50UmVnaXN0cnkiOiJlaXAxNTU6OTc6MHg4MDA0QTgxOEJGQjkxMjIzM2M0OTE4NzFiM2Q4NGM4OUE0OTRCRDllIn1dLCJzZXJ2aWNlcyI6W3siZW5kcG9pbnQiOiJodHRwczovL2dpdGh1Yi5jb20vU3RhcnJ5RGVzZXJ0cy9TbWFydC1Nb25leS1EaXZlcmdlbmNlIiwibmFtZSI6IndlYiIsInZlcnNpb24iOiIwLjEuMCJ9LHsiZW5kcG9pbnQiOiJodHRwczovL2dpdGh1Yi5jb20vU3RhcnJ5RGVzZXJ0cy9TbWFydC1Nb25leS1EaXZlcmdlbmNlL2Jsb2IvbWFpbi9za2lsbC9tYW5pZmVzdC5qc29uIiwibmFtZSI6Ik1DUCIsInZlcnNpb24iOiIwLjEuMCJ9XSwidHlwZSI6Imh0dHBzOi8vZWlwcy5ldGhlcmV1bS5vcmcvRUlQUy9laXAtODAwNCNyZWdpc3RyYXRpb24tdjEifQ==",
+  "tx_explorer": "https://testnet.bscscan.com/tx/0x5367a3ae19083fb19fafea8180f08f9e2b589869cbdd859e715cae8c74fbf8be",
+  "wallet_explorer": "https://testnet.bscscan.com/address/0x4727165918986b69ff3F94aC1dAa94987B819cfD",
+  "scan_site": "https://www.8004scan.io",
+  "scan_api": "https://www.8004scan.io/api/v1/agents?chain_id=97",
+  "recorded_at": "2026-06-15T09:25:14.128031+00:00",
+  "status": "registered"
+}
