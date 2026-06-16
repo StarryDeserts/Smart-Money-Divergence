@@ -136,3 +136,79 @@ def build_job_anchor(result) -> str:
     result (no agreed price)."""
     from bnbagent.erc8183.negotiation import build_job_description
     return build_job_description(result.to_dict())
+
+
+class DivergenceProvider:
+    """Live ERC-8183 provider façade.
+
+    Construction touches the RPC — the SDK's ``ERC8183Client`` verifies the RPC's
+    chain_id against the NetworkConfig — so this is the network-bound half. The
+    module-level helpers above are what the offline tests + demo exercise.
+    """
+
+    def __init__(self, wallet, *, network="bsc-testnet",
+                 service_price: str = DEFAULT_SERVICE_PRICE):
+        from bnbagent.erc8183.client import ERC8183Client
+        from bnbagent.erc8183.negotiation import NegotiationHandler
+        self.client = ERC8183Client(wallet, network=network)
+        self.service_price = service_price
+        self.handler = NegotiationHandler.from_erc8183_client(
+            erc8183_client=self.client,
+            service_price=service_price,
+            wallet_provider=wallet,
+        )
+
+    @classmethod
+    def from_env(cls, *, network: str = DEFAULT_NETWORK, rpc_url: str | None = None,
+                 service_price: str = DEFAULT_SERVICE_PRICE) -> "DivergenceProvider":
+        """Build a live provider from PRIVATE_KEY in the environment / .env.local.
+
+        ERC8183Client reads ``NetworkConfig.rpc_url`` directly (it ignores the
+        RPC_URL env var), so we resolve the preset and ``replace`` its rpc_url
+        with a reachable endpoint to dodge geo-blocked defaults.
+        """
+        import secrets
+        from dataclasses import replace
+        from bnbagent import EVMWalletProvider
+        from bnbagent.config import resolve_network
+        pk = os.environ.get("PRIVATE_KEY")
+        if not pk:
+            raise RuntimeError("PRIVATE_KEY not set (add it to .env.local, gitignored)")
+        password = os.environ.get("WALLET_PASSWORD") or secrets.token_urlsafe(24)
+        wallet = EVMWalletProvider(password=password, private_key=pk, persist=False)
+        rpc = rpc_url or os.environ.get("RPC_URL") or DEFAULT_RPC
+        nc = replace(resolve_network(network), rpc_url=rpc)
+        return cls(wallet, network=nc, service_price=service_price)
+
+    def quote_price(self) -> str:
+        return self.service_price
+
+    def negotiate(self, request: dict):
+        return self.handler.negotiate(request)
+
+    def build_manifest(self, verdict: dict, *, job_id: int = 0):
+        return build_deliverable_manifest(
+            verdict,
+            chain_id=self.client.network.chain_id,
+            contracts={
+                "commerce": self.client.commerce.address,
+                "router": self.client.router.address,
+                "policy": self.client.policy.address,
+            },
+            job_id=job_id,
+        )
+
+    def kernel_binding(self) -> dict:
+        """Live reads proving the provider is bound to the real kernel."""
+        return {
+            "chain_id": self.client.network.chain_id,
+            "agent_address": self.client.address,
+            "commerce": self.client.commerce.address,
+            "router": self.client.router.address,
+            "policy": self.client.policy.address,
+            "payment_token": self.client.payment_token,
+            "token_symbol": self.client.token_symbol(),
+            "token_decimals": self.client.token_decimals(),
+            "job_counter": self.client.commerce.job_counter(),
+            "dispute_window_s": self.client.policy.dispute_window(),
+        }

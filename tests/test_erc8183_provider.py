@@ -133,3 +133,18 @@ def test_job_anchor_round_trips_and_preserves_provider_sig():
     assert jd.price == ep.DEFAULT_SERVICE_PRICE
     assert jd.currency == _CURRENCY
     assert jd.provider_sig == result.provider_sig
+
+
+@pytest.mark.skipif(
+    not os.environ.get("RUN_LIVE_ERC8183"),
+    reason="live BSC-testnet RPC + PRIVATE_KEY required; set RUN_LIVE_ERC8183=1 to run",
+)
+def test_live_kernel_binding_smoke():
+    provider = ep.DivergenceProvider.from_env()
+    binding = provider.kernel_binding()
+    assert binding["chain_id"] == _CHAIN_ID
+    assert binding["dispute_window_s"] > 0
+    assert binding["job_counter"] >= 0
+    # the live quote + a signed negotiation also work end-to-end
+    assert provider.quote_price() == ep.DEFAULT_SERVICE_PRICE
+    assert provider.negotiate(ep.sample_request("BTC")).accepted is True
