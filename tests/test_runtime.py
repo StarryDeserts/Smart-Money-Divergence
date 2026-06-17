@@ -48,3 +48,15 @@ def test_run_skill_uses_default_theta_when_omitted():
     # Omitting theta_abs must be identical to passing the committed default.
     w = _window()
     assert run_skill("BTC", _Provider(w)) == run_skill("BTC", _Provider(w), theta_abs=DEFAULT_THETA)
+
+
+def test_degraded_detail_has_identical_keys_to_full():
+    """Degraded mode must drop NO field — capital_score goes null, not absent — so a
+    strongly-typed Go/Rust Unmarshal sees the same shape in both modes and can't panic."""
+    full = run_skill("BTC", _Provider(_window()), theta_abs=0.5)["detail"]
+    w = [Snapshot(token=s.token, day=s.day, price=s.price, fear_greed=s.fear_greed)
+         for s in _window()]
+    degraded = run_skill("BTC", _Provider(w), theta_abs=0.5)["detail"]
+    assert degraded["degraded"] is True          # the degraded branch is genuinely exercised
+    assert degraded["capital_score"] is None     # hero axis is null, not missing
+    assert set(degraded) == set(full)            # identical key set — no field dropped
