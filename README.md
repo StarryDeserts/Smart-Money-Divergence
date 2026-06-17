@@ -104,13 +104,21 @@ The integration contract is **one method**. Any object with
 plug in your own daily-series data source and call `run_skill`:
 
 ```python
+from datetime import date, timedelta
 from divergence.types import Snapshot
 from divergence.skill.runtime import run_skill   # theta_abs defaults to the committed θ
 
+def my_daily_rows(token):
+    # Replace this stub with YOUR data source. Per-row contract:
+    #   day: datetime.date (NOT a string)   price: float > 0   oldest row first.
+    base = date(2025, 1, 1)
+    return [{"day": base + timedelta(days=i), "price": 100.0 + i,
+             "whale_flow": 0.0, "fear_greed": 50.0} for i in range(90)]
+
 class MyProvider:
     def trailing_window(self, token, end, lookback):
-        # Map YOUR daily rows (oldest first) onto Snapshots. Any field may be None;
-        # whale_retail_flow is the hero capital axis — omit it and the Skill degrades.
+        # Map your rows onto Snapshots. Any field may be None; whale_retail_flow is the
+        # hero capital axis — omit it and the Skill honestly degrades (capital_score=null).
         return [
             Snapshot(token=token, day=r["day"], price=r["price"],
                      whale_retail_flow=r.get("whale_flow"), fear_greed=r.get("fear_greed"))
@@ -121,9 +129,18 @@ out = run_skill("BTC", MyProvider())
 print(out["verdict"], out["detail"]["direction"])   # plain-language + structured
 ```
 
+The snippet above runs verbatim. The contract to respect: `day` is a `datetime.date`,
+`price` is a positive float, rows are **oldest-first**, and the list is non-empty.
+In the JSON `detail`, every key is always present, but `capital_score` / `crowd_score`
+are `null` when that axis is unavailable — type them nullable in Go/Rust
+(`*float64` / `Option<f64>` / `number | null`).
+
 **No Python?** `python scripts/cli.py BTC` prints the same `{verdict, detail}` as
 **pure JSON on stdout** (human notes go to stderr), so JS/Go/Rust callers can shell
-out and parse it: `python scripts/cli.py BTC | jq .detail.direction`.
+out and parse it: `python scripts/cli.py BTC | jq .detail.direction`. stdout is always
+a single valid JSON object — on failure it is `{"error": {...}}` (exit 1), never a
+Python traceback and never a non-RFC-8259 `NaN`/`Infinity` token — so a strict parser
+can't be crashed by dirty data.
 
 **Zero-config first run.** With no cached `data/` frame and no key, `demo.py` /
 `cli.py` fall back to a `SyntheticProvider` and print a clearly-labelled *degraded*
