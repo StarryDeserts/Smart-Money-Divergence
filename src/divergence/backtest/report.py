@@ -1,6 +1,9 @@
 from __future__ import annotations
 from pathlib import Path
 
+# Repo-root reports/ by default so generation lands in the project tree, not the CWD.
+_DEFAULT_REPORT = Path(__file__).resolve().parents[3] / "reports" / "backtest_report.md"
+
 
 def _metrics_row(label, m):
     return (f"| {label} | {m['sharpe']:+.2f} | {m['total_return']:+.1%} | "
@@ -33,7 +36,7 @@ def render_report(result, *, sensitivity=None, notes: str = "") -> str:
     return "\n".join(lines) + "\n"
 
 
-def write_report(result, path="reports/backtest_report.md", *, sensitivity=None, notes="") -> Path:
+def write_report(result, path: str | Path = _DEFAULT_REPORT, *, sensitivity=None, notes="") -> Path:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(render_report(result, sensitivity=sensitivity, notes=notes), encoding="utf-8")

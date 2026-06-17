@@ -14,8 +14,20 @@ PATHS = {
 }
 
 
+def _default_data_dir() -> Path:
+    """Repo-root ``data/`` by default so the cache resolves identically from any CWD
+    (running ``cli.py`` from elsewhere must not create a stray empty ``./data`` and
+    silently fall back to synthetic). ``DIVERGENCE_DATA_DIR`` overrides it, e.g. a
+    mounted volume in a container."""
+    override = os.environ.get("DIVERGENCE_DATA_DIR")
+    return Path(override) if override else Path(__file__).resolve().parents[3] / "data"
+
+
+_DEFAULT_DATA_DIR = _default_data_dir()
+
+
 class CMCClient:
-    def __init__(self, api_key: str | None = None, cache_dir: Path | None = Path("data")):
+    def __init__(self, api_key: str | None = None, cache_dir: Path | None = _DEFAULT_DATA_DIR):
         self.api_key = api_key or os.environ.get("CMC_PRO_API_KEY", "")
         self.cache_dir = Path(cache_dir) if cache_dir else None
         if self.cache_dir:
